@@ -636,15 +636,17 @@ async def series_get_name(msg: Message, state: FSMContext):
 async def series_get_voice(call: CallbackQuery, state: FSMContext):
     voice = call.data.split("_")[1]
     await state.update_data(voice=voice)
-    await call.message.edit_text(f"✅ Озвучка выбрана: <b>{voice}</b>\n\n💎 Введите качество:", parse_mode="HTML")
+    await call.message.edit_text(f"✅ Озвучка выбрана: <b>{voice}</b>\n\n💎 Выберите качество:", reply_markup=quality_kb(), parse_mode="HTML")
     await state.set_state(AdminStates.SERIES_QUALITY)
     await call.answer()
 
-@dp.message(AdminStates.SERIES_QUALITY)
-async def series_get_qual(msg: Message, state: FSMContext):
-    await state.update_data(quality=msg.text)
-    await msg.answer("📅 Введите номер сезона:")
+@dp.callback_query(AdminStates.SERIES_QUALITY, F.data.startswith("q_"))
+async def series_get_qual(call: CallbackQuery, state: FSMContext):
+    quality = call.data.split("_", 1)[1]
+    await state.update_data(quality=quality)
+    await call.message.edit_text(f"✅ Качество выбрано: <b>{quality}</b>\n\n📅 Введите номер сезона:", parse_mode="HTML")
     await state.set_state(AdminStates.SERIES_SEASON)
+    await call.answer()
 
 @dp.message(AdminStates.SERIES_SEASON)
 async def series_get_season(msg: Message, state: FSMContext):

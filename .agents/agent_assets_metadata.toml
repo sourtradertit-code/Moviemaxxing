@@ -6,3 +6,9 @@ id = "vXVfn2Ges2quNyTcw-SEZ"
 uri = "file://filmsmax_bot.zip"
 type = "unspecified"
 title = "filmsmax_bot.zip — botMovie.py + requirements.txt + Procfile"
+
+[[outputs]]
+id = "WhKBhIV4IWEAN7VnM_48X"
+uri = "file://pella_bot.zip"
+type = "unspecified"
+title = "pella_bot.zip — botMovie.py + requirements.txt"

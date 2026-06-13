@@ -667,22 +667,114 @@ async def confirm_delete_movie(call: CallbackQuery):
     await call.answer("Фильм удалён!")
     await back_to_admin(call)
 
+async def _show_del_series_list(call: CallbackQuery):
+    series = await db.fetch_all("SELECT MIN(id), title FROM series GROUP BY title ORDER BY title ASC")
+    if not series:
+        await call.message.edit_text("Библиотека сериалов пуста.", reply_markup=back_to_admin_kb())
+        return
+    kb_list = [[InlineKeyboardButton(text=f"📺 {title}", callback_data=f"dss_{sid}")] for sid, title in series]
+    kb_list.append([InlineKeyboardButton(text="Назад 🔙", callback_data="back_admin")])
+    await call.message.edit_text("Выберите сериал:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list))
+
+async def _show_del_seasons(call: CallbackQuery, sid: int):
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (sid,))
+    if not row:
+        await call.answer("Сериал не найден", show_alert=True)
+        return
+    title = row[0]
+    seasons = await db.fetch_all("SELECT DISTINCT season FROM series WHERE title = ? ORDER BY season ASC", (title,))
+    kb_list = [[InlineKeyboardButton(text=f"📂 Сезон {s[0]}", callback_data=f"dse_{sid}_{s[0]}")] for s in seasons]
+    kb_list.append([InlineKeyboardButton(text="🗑 Удалить весь сериал", callback_data=f"das_{sid}")])
+    kb_list.append([InlineKeyboardButton(text="Назад 🔙", callback_data="delete_series")])
+    await call.message.edit_text(
+        f"📺 <b>{title}</b>\n\nВыберите сезон или удалите весь сериал:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list),
+        parse_mode="HTML"
+    )
+
+async def _show_del_episodes(call: CallbackQuery, sid: int, season: int):
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (sid,))
+    if not row:
+        await call.answer("Сериал не найден", show_alert=True)
+        return
+    title = row[0]
+    episodes = await db.fetch_all(
+        "SELECT id, episode FROM series WHERE title = ? AND season = ? ORDER BY episode ASC",
+        (title, season)
+    )
+    kb_list = [[InlineKeyboardButton(text=f"🗑 Серия {ep}", callback_data=f"dep_{row_id}")] for row_id, ep in episodes]
+    kb_list.append([InlineKeyboardButton(text=f"🗑 Удалить весь сезон {season}", callback_data=f"dsa_{sid}_{season}")])
+    kb_list.append([InlineKeyboardButton(text="Назад 🔙", callback_data=f"dss_{sid}")])
+    await call.message.edit_text(
+        f"📺 <b>{title}</b> — Сезон {season}\n\nВыберите серию для удаления:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list),
+        parse_mode="HTML"
+    )
+
 @dp.callback_query(F.data == "delete_series")
 async def delete_series_list(call: CallbackQuery):
-    series = await db.fetch_all("SELECT DISTINCT title FROM series")
-    if not series:
-        await call.answer("Библиотека сериалов пуста.", show_alert=True)
-        return
-    kb_list = [[InlineKeyboardButton(text=f"🗑 {s[0]}", callback_data=f"del_s_{s[0]}")] for s in series]
-    kb_list.append([InlineKeyboardButton(text="Назад 🔙", callback_data="back_admin")])
-    await call.message.edit_text("Выберите сериал для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list))
+    await _show_del_series_list(call)
+    await call.answer()
 
-@dp.callback_query(F.data.startswith("del_s_"))
-async def confirm_delete_series(call: CallbackQuery):
-    title = call.data.replace("del_s_", "")
+@dp.callback_query(F.data.startswith("dss_"))
+async def delete_series_seasons(call: CallbackQuery):
+    sid = int(call.data.split("_")[1])
+    await _show_del_seasons(call, sid)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("das_"))
+async def delete_all_series(call: CallbackQuery):
+    sid = int(call.data.split("_")[1])
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (sid,))
+    if not row:
+        await call.answer("Сериал не найден", show_alert=True)
+        return
+    title = row[0]
     await db.execute("DELETE FROM series WHERE title = ?", (title,))
-    await call.answer(f"Сериал {title} удалён!")
+    await call.answer(f"Сериал «{title}» удалён!", show_alert=True)
     await back_to_admin(call)
+
+@dp.callback_query(F.data.startswith("dse_"))
+async def delete_series_episodes(call: CallbackQuery):
+    parts = call.data.split("_")
+    sid = int(parts[1])
+    season = int(parts[2])
+    await _show_del_episodes(call, sid, season)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("dsa_"))
+async def delete_season_all(call: CallbackQuery):
+    parts = call.data.split("_")
+    sid = int(parts[1])
+    season = int(parts[2])
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (sid,))
+    if not row:
+        await call.answer("Сериал не найден", show_alert=True)
+        return
+    title = row[0]
+    await db.execute("DELETE FROM series WHERE title = ? AND season = ?", (title, season))
+    await call.answer(f"Сезон {season} удалён!", show_alert=True)
+    await _show_del_seasons(call, sid)
+
+@dp.callback_query(F.data.startswith("dep_"))
+async def delete_one_episode(call: CallbackQuery):
+    row_id = int(call.data.split("_")[1])
+    info = await db.fetch_one("SELECT title, season, episode FROM series WHERE id = ?", (row_id,))
+    if not info:
+        await call.answer("Серия не найдена", show_alert=True)
+        return
+    title, season, episode = info
+    await db.execute("DELETE FROM series WHERE id = ?", (row_id,))
+    await call.answer(f"Серия {episode} удалена!", show_alert=True)
+    sid_row = await db.fetch_one("SELECT MIN(id) FROM series WHERE title = ? AND season = ?", (title, season))
+    if sid_row and sid_row[0]:
+        await _show_del_episodes(call, sid_row[0], season)
+    else:
+        sid_row2 = await db.fetch_one("SELECT MIN(id) FROM series WHERE title = ?", (title,))
+        if sid_row2 and sid_row2[0]:
+            await _show_del_seasons(call, sid_row2[0])
+        else:
+            await back_to_admin(call)
 
 # --- РАССЫЛКА ---
 

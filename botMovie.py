@@ -341,91 +341,132 @@ async def show_series_list(message: Message):
     if not await is_subscribed(message.from_user.id):
         await send_sub_alert(message)
         return
-    series = await db.fetch_all("SELECT DISTINCT title FROM series ORDER BY title ASC")
-    if not series:
+    series_data = await db.fetch_all("SELECT MIN(id), title FROM series GROUP BY title ORDER BY title ASC")
+    if not series_data:
         await message.answer("Библиотека сериалов пока пуста. ✨")
         return
-    await send_list_page(message, 0, series, "series")
+    await send_series_list_page(message, 0, series_data)
+
+async def send_series_list_page(message_or_call, page: int, series_data: list):
+    total_pages = max(1, (len(series_data) - 1) // Config.PAGE_SIZE + 1)
+    start = page * Config.PAGE_SIZE
+    page_items = series_data[start: start + Config.PAGE_SIZE]
+
+    kb_list = [[InlineKeyboardButton(text=f"🎬 {title}", callback_data=f"ps_{sid}")] for sid, title in page_items]
+
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(InlineKeyboardButton(text="⬅️", callback_data=f"slist_{page-1}"))
+    if page < total_pages - 1:
+        nav_btns.append(InlineKeyboardButton(text="➡️", callback_data=f"slist_{page+1}"))
+    if nav_btns:
+        kb_list.append(nav_btns)
+
+    markup = InlineKeyboardMarkup(inline_keyboard=kb_list)
+    text = f"📚 Список сериалов ({page + 1}/{total_pages}):"
+
+    if isinstance(message_or_call, Message):
+        await message_or_call.answer(text, reply_markup=markup)
+    elif isinstance(message_or_call, CallbackQuery):
+        await message_or_call.message.edit_text(text, reply_markup=markup)
+
+@dp.callback_query(F.data.startswith("slist_"))
+async def callback_series_list_paginated(call: CallbackQuery):
+    if not await is_subscribed(call.from_user.id):
+        await send_sub_alert(call)
+        return
+    page = int(call.data.split("_")[1])
+    series_data = await db.fetch_all("SELECT MIN(id), title FROM series GROUP BY title ORDER BY title ASC")
+    await send_series_list_page(call, page, series_data)
+    await call.answer()
 
 @dp.callback_query(F.data.startswith("list_"))
-async def callback_list_paginated(call: CallbackQuery):
+async def callback_movies_list_paginated(call: CallbackQuery):
     if not await is_subscribed(call.from_user.id):
         await send_sub_alert(call)
         return
-    
     parts = call.data.split("_")
-    content_type = parts[1]
     page = int(parts[2])
-    
-    if content_type == "movies":
-        items = await db.fetch_all("SELECT title FROM movies ORDER BY title ASC")
-    else:
-        items = await db.fetch_all("SELECT DISTINCT title FROM series ORDER BY title ASC")
-    
-    await send_list_page(call, page, items, content_type)
+    items = await db.fetch_all("SELECT title FROM movies ORDER BY title ASC")
+    await send_list_page(call, page, items, "movies")
     await call.answer()
 
-# ====================== НОВАЯ СИСТЕМА СЕРИАЛОВ ======================
+# --- ПРОСМОТР ФИЛЬМОВ ПО КНОПКЕ ---
 
-@dp.callback_query(F.data.startswith("play_"))
-async def play_content_by_btn(call: CallbackQuery):
+@dp.callback_query(F.data.startswith("play_movies_"))
+async def play_movie_by_btn(call: CallbackQuery):
     if not await is_subscribed(call.from_user.id):
         await send_sub_alert(call)
         return
-    
-    data = call.data
-    parts = data.split("_", 2)
-    content_type = parts[1]
-    title = parts[2] if len(parts) > 2 else ""
+    title = call.data[len("play_movies_"):]
+    movie = await db.fetch_one("SELECT voice, quality, file_id FROM movies WHERE title = ?", (title,))
+    if movie:
+        await call.message.answer_video(
+            movie[2],
+            caption=f"🍿 Название: {title}\n🎧 Озвучка: {movie[0]}\n💎 Качество: {movie[1]}\n\n✨ Приятного просмотра! 🎬🛋️🔥"
+        )
+    else:
+        await call.answer("Фильм не найден", show_alert=True)
+    await call.answer()
 
-    if content_type == "movies":
-        movie = await db.fetch_one("SELECT voice, quality, file_id FROM movies WHERE title = ?", (title,))
-        if movie:
-            await call.message.answer_video(
-                movie[2], 
-                caption=f"🍿 Название: {title}\n🎧 Озвучка: {movie[0]}\n💎 Качество: {movie[1]}\n\n✨ Приятного просмотра! 🎬🛋️🔥"
-            )
-            await call.answer()
-            return
+# ====================== СИСТЕМА СЕРИАЛОВ ======================
 
-    await show_series_seasons(call, title)
-
-async def show_series_seasons(call: CallbackQuery, title: str):
-    seasons = await db.fetch_all("SELECT DISTINCT season FROM series WHERE title = ? ORDER BY season ASC", (title,))
-    if not seasons:
+@dp.callback_query(F.data.startswith("ps_"))
+async def play_series_handler(call: CallbackQuery):
+    if not await is_subscribed(call.from_user.id):
+        await send_sub_alert(call)
+        return
+    series_id = int(call.data.split("_")[1])
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (series_id,))
+    if not row:
         await call.answer("Сериал не найден", show_alert=True)
         return
+    title = row[0]
+    seasons = await db.fetch_all(
+        "SELECT DISTINCT season FROM series WHERE title = ? ORDER BY season ASC", (title,)
+    )
+    if not seasons:
+        await call.answer("Сезоны не найдены", show_alert=True)
+        return
 
-    kb_list = [[InlineKeyboardButton(text=f"📺 Сезон {s[0]}", callback_data=f"season_{title}_{s[0]}")] for s in seasons]
-    kb_list.append([InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_series_list")])
-    
-    await call.message.edit_text(f"🎬 Сериал: <b>{title}</b>\n\nВыберите сезон:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="HTML")
+    kb_list = [[InlineKeyboardButton(text=f"📺 Сезон {s[0]}", callback_data=f"seas_{series_id}_{s[0]}")] for s in seasons]
+    kb_list.append([InlineKeyboardButton(text="🔙 К списку сериалов", callback_data="slist_0")])
+
+    await call.message.edit_text(
+        f"🎬 Сериал: <b>{title}</b>\n\nВыберите сезон:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list),
+        parse_mode="HTML"
+    )
     await call.answer()
 
-@dp.callback_query(F.data.startswith("season_"))
+@dp.callback_query(F.data.startswith("seas_"))
 async def show_season_episodes(call: CallbackQuery):
     if not await is_subscribed(call.from_user.id):
         await send_sub_alert(call)
         return
+    parts = call.data.split("_")
+    series_id = int(parts[1])
+    season = int(parts[2])
 
-    try:
-        parts = call.data.split("_")
-        title = "_".join(parts[1:-1])
-        season = int(parts[-1])
-    except:
-        await call.answer("Ошибка обработки данных", show_alert=True)
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (series_id,))
+    if not row:
+        await call.answer("Сериал не найден", show_alert=True)
         return
-    
+    title = row[0]
+
     episodes = await db.fetch_all(
-        "SELECT episode, file_id FROM series WHERE title = ? AND season = ? ORDER BY episode ASC", 
+        "SELECT id, episode FROM series WHERE title = ? AND season = ? ORDER BY episode ASC",
         (title, season)
     )
-    
-    kb_list = [[InlineKeyboardButton(text=f"🎞️ Серия {e[0]}", callback_data=f"ep_{e[1]}")] for e in episodes]
-    kb_list.append([InlineKeyboardButton(text="🔙 Назад к сезонам", callback_data=f"play_series_{title}")])
-    
+    if not episodes:
+        await call.answer("Серии не найдены", show_alert=True)
+        return
+
+    kb_list = [[InlineKeyboardButton(text=f"🎞️ Серия {ep}", callback_data=f"ep_{row_id}")] for row_id, ep in episodes]
+    kb_list.append([InlineKeyboardButton(text="🔙 К сезонам", callback_data=f"ps_{series_id}")])
+
     await call.message.edit_text(
-        f"🎬 {title} — <b>Сезон {season}</b>", 
+        f"🎬 <b>{title}</b> — Сезон {season}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list),
         parse_mode="HTML"
     )
@@ -437,57 +478,51 @@ async def play_episode(call: CallbackQuery):
         await send_sub_alert(call)
         return
 
-    file_id = call.data.replace("ep_", "")
-    
+    row_id = int(call.data.split("_")[1])
+
     try:
-        info = await db.fetch_one("""
-            SELECT title, season, episode, voice, quality 
-            FROM series WHERE file_id = ?
-        """, (file_id,))
-        
+        info = await db.fetch_one(
+            "SELECT title, season, episode, voice, quality, file_id FROM series WHERE id = ?",
+            (row_id,)
+        )
         if not info:
             await call.answer("Серия не найдена", show_alert=True)
             return
 
-        title, season, episode, voice, quality = info
+        title, season, episode, voice, quality, file_id = info
 
         await call.message.answer_video(
             file_id,
-            caption=f"🎬 <b>{title}</b>\n"
-                    f"📺 Сезон {season} • Серия {episode}\n"
-                    f"🎧 {voice} • 💎 {quality}\n\n"
-                    f"✨ Приятного просмотра! 🔥",
+            caption=(
+                f"🎬 <b>{title}</b>\n"
+                f"📺 Сезон {season} • Серия {episode}\n"
+                f"🎧 {voice} • 💎 {quality}\n\n"
+                f"✨ Приятного просмотра! 🔥"
+            ),
             parse_mode="HTML"
         )
 
         episodes = await db.fetch_all(
-            "SELECT episode, file_id FROM series WHERE title = ? AND season = ? ORDER BY episode ASC",
+            "SELECT id, episode FROM series WHERE title = ? AND season = ? ORDER BY episode ASC",
             (title, season)
         )
-        
-        current_idx = next((i for i, (_, fid) in enumerate(episodes) if fid == file_id), None)
-        
+        current_idx = next((i for i, (rid, _) in enumerate(episodes) if rid == row_id), None)
+
         if current_idx is not None and len(episodes) > 1:
             nav = []
             if current_idx > 0:
-                nav.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"ep_{episodes[current_idx-1][1]}"))
+                nav.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"ep_{episodes[current_idx-1][0]}"))
             if current_idx < len(episodes) - 1:
-                nav.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"ep_{episodes[current_idx+1][1]}"))
-            
+                nav.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"ep_{episodes[current_idx+1][0]}"))
             if nav:
                 await call.message.answer(
-                    "⏭️ Переключение между сериями:", 
+                    "⏭️ Переключение между сериями:",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[nav])
                 )
     except Exception as e:
         logging.error(f"Ошибка при воспроизведении серии: {e}")
         await call.answer("Ошибка при воспроизведении видео.", show_alert=True)
-    
-    await call.answer()
 
-@dp.callback_query(F.data == "back_to_series_list")
-async def back_to_series_list(call: CallbackQuery):
-    await show_series_list(call.message)
     await call.answer()
 
 # --- АДМИН ПАНЕЛЬ ---
@@ -695,14 +730,16 @@ async def search_content(msg: Message):
         )
 
     # Поиск сериалов
-    all_series = await db.fetch_all("SELECT DISTINCT title FROM series")
-    series_match = process.extractOne(query, [s[0] for s in all_series], score_cutoff=70)
+    all_series = await db.fetch_all("SELECT MIN(id), title FROM series GROUP BY title")
+    series_match = process.extractOne(query, [s[1] for s in all_series], score_cutoff=70)
     if series_match:
         title = series_match[0]
+        sid_row = await db.fetch_one("SELECT MIN(id) FROM series WHERE title = ?", (title,))
+        sid = sid_row[0]
         await msg.answer(
             f"🎬 Найден сериал: <b>{title}</b>",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📺 Выбрать сезон", callback_data=f"play_series_{title}")
+                InlineKeyboardButton(text="📺 Выбрать сезон", callback_data=f"ps_{sid}")
             ]]),
             parse_mode="HTML"
         )

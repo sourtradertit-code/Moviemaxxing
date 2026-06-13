@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.env
+.pythonlibs/
+*.db
+*.sqlite3

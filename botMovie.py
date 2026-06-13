@@ -876,6 +876,7 @@ async def search_content(msg: Message):
 
         # Если не найдено в библиотеке — отправляем запрос админам
         if not found_in_library:
+            await msg.answer("😔 Фильм который вы ищете ещё не был добавлен к нам, но ваш запрос отправлен админам которые скоро добавят фильм.")
             await db.add_request(query)
             for admin_id in Config.ADMIN_IDS:
                 try:

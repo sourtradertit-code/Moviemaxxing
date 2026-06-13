@@ -2,7 +2,3 @@ aiogram==3.13.0
 aiosqlite
 thefuzz
 requests
-aiogram==3.13.0
-aiosqlite
-requests
-thefuzz

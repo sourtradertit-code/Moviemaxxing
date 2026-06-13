@@ -262,6 +262,9 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="➕ Добавить Сериал", callback_data="add_series")
         ],
         [
+            InlineKeyboardButton(text="➕ Добавить Сезон", callback_data="add_season")
+        ],
+        [
             InlineKeyboardButton(text="🗑 Удалить Фильм", callback_data="delete_movie"),
             InlineKeyboardButton(text="🗑 Удалить Сериал", callback_data="delete_series")
         ],
@@ -597,6 +600,30 @@ async def get_file(msg: Message, state: FSMContext):
 async def add_series_start(call: CallbackQuery, state: FSMContext):
     await call.message.answer("🎬 Введите название сериала:")
     await state.set_state(AdminStates.SERIES_NAME)
+    await call.answer()
+
+@dp.callback_query(F.data == "add_season")
+async def add_season_start(call: CallbackQuery, state: FSMContext):
+    series_data = await db.fetch_all("SELECT MIN(id), title FROM series GROUP BY title ORDER BY title ASC")
+    if not series_data:
+        await call.answer("Нет сериалов в базе. Сначала добавьте сериал.", show_alert=True)
+        return
+    kb_list = [[InlineKeyboardButton(text=f"📺 {title}", callback_data=f"ases_{sid}")] for sid, title in series_data]
+    kb_list.append([InlineKeyboardButton(text="Назад 🔙", callback_data="back_admin")])
+    await call.message.answer("Выберите сериал для добавления сезона:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list))
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("ases_"))
+async def add_season_select_series(call: CallbackQuery, state: FSMContext):
+    sid = int(call.data.split("_")[1])
+    row = await db.fetch_one("SELECT title FROM series WHERE id = ?", (sid,))
+    if not row:
+        await call.answer("Сериал не найден", show_alert=True)
+        return
+    title = row[0]
+    await state.update_data(name=title)
+    await call.message.answer(f"✅ Сериал: <b>{title}</b>\n\n🎧 Выберите озвучку:", reply_markup=voice_kb(), parse_mode="HTML")
+    await state.set_state(AdminStates.SERIES_VOICE)
     await call.answer()
 
 @dp.message(AdminStates.SERIES_NAME)

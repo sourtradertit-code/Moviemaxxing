@@ -492,7 +492,7 @@ async def back_to_series_list(call: CallbackQuery):
 
 # --- АДМИН ПАНЕЛЬ ---
 
-@dp.message(F.text == "Назармоггает")
+@dp.message(F.text == "адм")
 async def admin_panel(msg: Message):
     if msg.from_user.id in Config.ADMIN_IDS:
         await msg.answer("🛠 Режим администратора активирован!", reply_markup=admin_panel_kb())

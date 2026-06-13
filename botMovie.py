@@ -527,20 +527,24 @@ async def add_vid_start(call: CallbackQuery, state: FSMContext):
 @dp.message(AdminStates.MOVIE_NAME)
 async def get_name(msg: Message, state: FSMContext):
     await state.update_data(name=msg.text)
-    await msg.answer("🎧 Введите озвучку (например, Дубляж):")
+    await msg.answer("🎧 Выберите озвучку:", reply_markup=voice_kb())
     await state.set_state(AdminStates.MOVIE_VOICE)
 
-@dp.message(AdminStates.MOVIE_VOICE)
-async def get_voice(msg: Message, state: FSMContext):
-    await state.update_data(voice=msg.text)
-    await msg.answer("💎 Введите качество (например, 1080p):")
+@dp.callback_query(AdminStates.MOVIE_VOICE, F.data.startswith("v_"))
+async def get_voice(call: CallbackQuery, state: FSMContext):
+    voice = call.data.split("_", 1)[1]
+    await state.update_data(voice=voice)
+    await call.message.edit_text(f"✅ Озвучка выбрана: <b>{voice}</b>\n\n💎 Выберите качество:", reply_markup=quality_kb(), parse_mode="HTML")
     await state.set_state(AdminStates.MOVIE_QUALITY)
+    await call.answer()
 
-@dp.message(AdminStates.MOVIE_QUALITY)
-async def get_quality(msg: Message, state: FSMContext):
-    await state.update_data(quality=msg.text)
-    await msg.answer("📤 Отправьте видеофайл:")
+@dp.callback_query(AdminStates.MOVIE_QUALITY, F.data.startswith("q_"))
+async def get_quality(call: CallbackQuery, state: FSMContext):
+    quality = call.data.split("_", 1)[1]
+    await state.update_data(quality=quality)
+    await call.message.edit_text(f"✅ Качество выбрано: <b>{quality}</b>\n\n📤 Отправьте видеофайл:", parse_mode="HTML")
     await state.set_state(AdminStates.MOVIE_FILE)
+    await call.answer()
 
 @dp.message(AdminStates.MOVIE_FILE, F.video)
 async def get_file(msg: Message, state: FSMContext):

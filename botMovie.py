@@ -3,6 +3,7 @@ import aiosqlite
 import os
 import logging
 import hashlib
+from aiohttp import web
 try:
     import requests
     REQUESTS_AVAILABLE = True
@@ -906,12 +907,25 @@ async def show_top(call: CallbackQuery):
     await call.message.edit_text(text, reply_markup=back_to_admin_kb())
     await call.answer()
 
+# --- KEEP-ALIVE СЕРВЕР ---
+
+async def handle(request):
+    return web.Response(text="Bot is alive!")
+
+async def run_web():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 5000)
+    await site.start()
+
 # --- ЗАПУСК БОТА ---
 
 async def main():
     logging.info("Бот запущен!")
     await init_storage()
-    await dp.start_polling(bot)
+    await asyncio.gather(run_web(), dp.start_polling(bot))
 
 if __name__ == "__main__":
     asyncio.run(main())

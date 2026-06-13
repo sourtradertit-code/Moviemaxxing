@@ -32,3 +32,7 @@ outputType = "console"
 [deployment]
 deploymentTarget = "vm"
 run = ["python", "botMovie.py"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80

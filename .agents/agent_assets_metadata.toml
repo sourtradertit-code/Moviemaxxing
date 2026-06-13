@@ -12,3 +12,9 @@ id = "WhKBhIV4IWEAN7VnM_48X"
 uri = "file://pella_bot.zip"
 type = "unspecified"
 title = "pella_bot.zip — botMovie.py + requirements.txt"
+
+[[outputs]]
+id = "vIY5Gcj9WZop03t8Ga8_0"
+uri = "file://github_bot.zip"
+type = "unspecified"
+title = "github_bot.zip — botMovie.py + requirements.txt + GitHub Actions"

@@ -17,9 +17,9 @@ dp = Dispatcher()
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        f"👋 Hello, {message.from_user.full_name}!\n\n"
-        "I'm <b>Films Max</b> — your movie bot.\n\n"
-        "Use /help to see available commands.",
+        f"👋 Привет, {message.from_user.full_name}!\n\n"
+        "Я <b>Films Max</b> — твой бот о фильмах.\n\n"
+        "Используй /help чтобы увидеть доступные команды.",
         parse_mode="HTML"
     )
 
@@ -27,9 +27,9 @@ async def cmd_start(message: Message):
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "🎬 <b>Films Max — Commands</b>\n\n"
-        "/start — Welcome message\n"
-        "/help — Show this help\n",
+        "🎬 <b>Films Max — Команды</b>\n\n"
+        "/start — Приветственное сообщение\n"
+        "/help — Показать это меню\n",
         parse_mode="HTML"
     )
 
@@ -37,7 +37,7 @@ async def cmd_help(message: Message):
 @dp.message(F.text)
 async def handle_text(message: Message):
     await message.answer(
-        f"You said: <i>{message.text}</i>\n\nUse /help to see available commands.",
+        f"Ты написал: <i>{message.text}</i>\n\nИспользуй /help чтобы увидеть доступные команды.",
         parse_mode="HTML"
     )
 

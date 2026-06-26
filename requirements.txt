@@ -1,6 +1,5 @@
 aiogram==3.13.0
-asyncpg
+aiosqlite
 aiohttp
 thefuzz
-python-Levenshtein
 requests

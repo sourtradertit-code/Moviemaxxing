@@ -37,3 +37,9 @@ run = ["python", "botMovie.py"]
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+PARSER_API_ID = "38260292"
+PARSER_API_HASH = "75465e743d507b467b61d1be29b32468"

@@ -60,6 +60,7 @@ class AdminStates(StatesGroup):
     SERIES_WAITING_VIDEOS = State()
     
     BROADCAST_TEXT = State()
+    BULK_UPLOAD = State()
 
 # --- ИНИЦИАЛИЗАЦИЯ БД ---
 async def init_storage():
@@ -275,6 +276,9 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="🔝 Топ запросов", callback_data="top_queries"),
             InlineKeyboardButton(text="📋 Требуемые фильмы", callback_data="requested_movies")
+        ],
+        [
+            InlineKeyboardButton(text="📦 Массовая загрузка", callback_data="bulk_upload")
         ]
     ])
 
@@ -823,6 +827,53 @@ async def bc_run(msg: Message, state: FSMContext):
     await msg.answer(f"✅ Рассылка завершена. Получило {count} пользователей.")
     await state.clear()
 
+# --- МАССОВАЯ ЗАГРУЗКА ФИЛЬМОВ ---
+
+@dp.callback_query(F.data == "bulk_upload")
+async def bulk_upload_start(call: CallbackQuery, state: FSMContext):
+    await state.update_data(bulk_count=0)
+    await call.message.answer(
+        "📦 <b>Режим массовой загрузки</b>\n\n"
+        "Отправляй видео по одному (до 100 штук).\n"
+        "Подпись каждого видео должна быть в формате:\n"
+        "<code>Название (Озвучка [Качество])</code>\n\n"
+        "Пример: <code>Железный человек (Дублированный [1080p])</code>\n\n"
+        "Когда закончишь — напиши <b>Готово</b>",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.BULK_UPLOAD)
+    await call.answer()
+
+@dp.message(AdminStates.BULK_UPLOAD, F.video)
+async def bulk_upload_video(msg: Message, state: FSMContext):
+    import re
+    caption = msg.caption or ""
+    file_id = msg.video.file_id
+    m = re.match(r"^(.+?)\s*\((.+?)\s*\[(.+?)\]\)", caption.strip())
+    if m:
+        title   = m.group(1).strip()
+        voice   = m.group(2).strip()
+        quality = m.group(3).strip()
+    else:
+        title   = caption.strip() or "Без названия"
+        voice   = "Неизвестно"
+        quality = "Неизвестно"
+    await db.execute(
+        "INSERT OR IGNORE INTO movies (title, voice, quality, file_id) VALUES (?, ?, ?, ?)",
+        (title, voice, quality, file_id)
+    )
+    data = await state.get_data()
+    count = data.get("bulk_count", 0) + 1
+    await state.update_data(bulk_count=count)
+    await msg.react([{"type": "emoji", "emoji": "👍"}])
+
+@dp.message(AdminStates.BULK_UPLOAD, F.text.lower() == "готово")
+async def bulk_upload_done(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    count = data.get("bulk_count", 0)
+    await msg.answer(f"✅ Загружено {count} фильмов в базу данных!", reply_markup=back_to_admin_kb())
+    await state.clear()
+
 # --- ПОИСК С TMDB (обновлённый) ---
 
 @dp.message(F.text)
@@ -906,6 +957,18 @@ async def show_top(call: CallbackQuery):
 # --- ЗАПУСК БОТА ---
 
 async def main():
+    from aiohttp import web
+
+    async def health(request):
+        return web.Response(text="OK")
+
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 5000)
+    await site.start()
+
     logging.info("Бот запущен!")
     await init_storage()
     await dp.start_polling(bot)

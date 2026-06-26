@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python botMovie.py"
+args = "python auth_web.py"
 waitForPort = 5000
 
 [deployment]

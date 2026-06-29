@@ -1,28 +1,38 @@
-name: Run Telegram Bot
+name: Run Moviemax Bot
 
 on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Reason (optional)'
+        required: false
+        default: 'Manual restart'
   schedule:
     - cron: '0 */6 * * *'
-  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run bot
+      - name: Run Moviemax Bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          BOT_DATABASE_URL: ${{ secrets.BOT_DATABASE_URL }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          CHANNEL_LINK: ${{ secrets.CHANNEL_LINK }}
         run: python botMovie.py
